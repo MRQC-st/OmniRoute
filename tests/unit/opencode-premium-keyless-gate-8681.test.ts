@@ -2,10 +2,8 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 const { OpencodeExecutor } = await import("../../open-sse/executors/opencode.ts");
-const { PROVIDER_MODELS } = await import("../../open-sse/config/providerModels.ts");
-const { _setOpencodeFreeModelsForTests } = await import(
-  "../../open-sse/executors/opencodeFreeTierContract.ts"
-);
+const { _setOpencodeFreeModelsForTests } =
+  await import("../../open-sse/executors/opencodeFreeTierContract.ts");
 
 /**
  * The free set is now derived from the synced catalog (available ∩ models.dev cost 0 ∧
@@ -61,7 +59,10 @@ describe("OpencodeExecutor — premium model keyless gate (#8681)", () => {
 
     it("returns false for the ids the synced catalog serves free on opencode-zen", () => {
       assert.equal(OpencodeExecutor.isPremiumModel("big-pickle", "opencode-zen"), false);
-      assert.equal(OpencodeExecutor.isPremiumModel("deepseek-v4-flash-free", "opencode-zen"), false);
+      assert.equal(
+        OpencodeExecutor.isPremiumModel("deepseek-v4-flash-free", "opencode-zen"),
+        false
+      );
       assert.equal(OpencodeExecutor.isPremiumModel("mimo-v2.5-free", "opencode-zen"), false);
     });
 
@@ -126,7 +127,7 @@ describe("OpencodeExecutor — premium model keyless gate (#8681)", () => {
     it("returns 402 for premium model gpt-5 with keyless credentials", async () => {
       const result = await zenExecutor.execute(createInput("gpt-5", true, null));
       const response = result instanceof Response ? result : result.response;
-      const body = await response.json() as { error: { message: string } };
+      const body = (await response.json()) as { error: { message: string } };
       assert.equal(response.status, 402);
       assert.ok(
         body.error.message.includes("API key"),
