@@ -26,6 +26,7 @@ import {
   _setOpencodeFreeModelsForTests,
   applyFreeTierRequestContract,
   configuredPlaceholderToolNames,
+  isPremiumOpencodeModel,
   mergeClientToolsWithObserved,
   noteFreeTierOutcome,
   prepareFreeTierRequest,
@@ -97,10 +98,7 @@ test("with the synced catalog pinned, only its ids count as free", () => {
       requiresFreeTierRequestContract("zen", "opencode", "nemotron-3.5-lightning-free"),
       true
     );
-    assert.equal(
-      requiresFreeTierRequestContract("zen", "opencode", "delisted-model-free"),
-      false
-    );
+    assert.equal(requiresFreeTierRequestContract("zen", "opencode", "delisted-model-free"), false);
   } finally {
     _setOpencodeFreeModelsForTests(null);
   }
@@ -1015,6 +1013,64 @@ test("a deferred note without a verdict never touches the observed names", () =>
     noteFreeTierOutcome(borrowedAttempt(), false);
   }
   assert.deepEqual(getObservedToolNames("opencode", "nemotron-3.5-lightning-free"), ["glob"]);
+});
+
+test("buildHeaders re-mints a shape-valid foreign session on a gated free model", () => {
+  const foreign = "ses_0123456789abABCDEFGHIJKLMN";
+  const headers = new OpencodeExecutor("opencode-zen").buildHeaders(
+    null,
+    true,
+    { "x-opencode-session": foreign },
+    "nemotron-3.5-lightning-free"
+  );
+  assert.notEqual(headers["x-opencode-session"], foreign);
+  assertDescendingSession(headers["x-opencode-session"]);
+});
+
+test("buildHeaders leaves an opencode-go session unchanged", () => {
+  const session = "ses_0123456789abABCDEFGHIJKLMN";
+  const headers = new OpencodeExecutor("opencode-go").buildHeaders(
+    null,
+    true,
+    { "x-opencode-session": session },
+    "glm-5.2"
+  );
+  assert.equal(headers["x-opencode-session"], session);
+});
+
+test("an opencode-go synced catalog row is not in the free set", async () => {
+  // SQLITE_FILE is fixed when the db module loads, so this uses that test database
+  // and removes the rows afterwards. A later case must not inherit the synced set.
+  const core = await import("../../src/lib/db/core.ts");
+  const { saveModelsDevPricing, clearModelsDevPricing } =
+    await import("../../src/lib/modelsDevSync.ts");
+  const db = core.getDbInstance();
+  const insert = db.prepare(
+    "INSERT INTO key_value (namespace, key, value) VALUES ('syncedAvailableModels', ?, ?)"
+  );
+  const remove = db.prepare(
+    "DELETE FROM key_value WHERE namespace = 'syncedAvailableModels' AND key IN (?, ?, ?)"
+  );
+  try {
+    saveModelsDevPricing({
+      opencode: {
+        "zen-free": { input: 0, output: 0 },
+        "pickle-zen": { input: 0, output: 0 },
+        "big-pickle": { input: 0, output: 0 },
+      },
+    });
+    insert.run("opencode:conn", JSON.stringify([{ id: "zen-free" }]));
+    insert.run("opencode-zen:conn", JSON.stringify([{ id: "pickle-zen" }]));
+    insert.run("opencode-go:conn", JSON.stringify([{ id: "big-pickle" }]));
+    _setOpencodeFreeModelsForTests(null);
+    assert.equal(isPremiumOpencodeModel("zen-free", "opencode"), false);
+    assert.equal(isPremiumOpencodeModel("pickle-zen", "opencode-zen"), false);
+    assert.equal(isPremiumOpencodeModel("big-pickle", "opencode"), true);
+  } finally {
+    remove.run("opencode:conn", "opencode-zen:conn", "opencode-go:conn");
+    clearModelsDevPricing();
+    _setOpencodeFreeModelsForTests(null);
+  }
 });
 
 test("a deferred 403 verdict still counts against the borrowed names", () => {

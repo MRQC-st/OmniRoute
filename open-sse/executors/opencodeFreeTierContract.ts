@@ -24,7 +24,7 @@
  * for JSON, reusing the shared event-stream parsers.
  */
 import { parseSSEToOpenAIResponse, parseSSEToResponsesOutput } from "../handlers/sseParser.ts";
-import { getDbInstance } from "@/lib/db/core";
+import { readSyncedOpencodeFamilyModelIds } from "@/lib/db/models";
 import { getModelCatalogCacheVersion } from "@/lib/db/readCache";
 import { getModelsDevPricing, getSyncedCapability } from "@/lib/modelsDevSync";
 import {
@@ -137,36 +137,10 @@ export function _setOpencodeFreeModelsForTests(ids: readonly string[] | null): v
   freeCatalogCache = null;
 }
 
-/** Read the ids the discovery writer stored for the opencode family, unioned. */
-function readAvailableOpencodeModelIds(): Set<string> {
-  const ids = new Set<string>();
-  const db = getDbInstance();
-  const rows = db
-    .prepare(
-      "SELECT value FROM key_value WHERE namespace = 'syncedAvailableModels' AND key LIKE ?"
-    )
-    .all("opencode%") as Array<{ value?: unknown }>;
-  for (const row of rows) {
-    if (typeof row?.value !== "string") continue;
-    try {
-      const parsed: unknown = JSON.parse(row.value);
-      if (!Array.isArray(parsed)) continue;
-      for (const entry of parsed) {
-        if (!entry || typeof entry !== "object" || !("id" in entry)) continue;
-        const id = entry.id;
-        if (typeof id === "string" && id.trim()) ids.add(id.trim());
-      }
-    } catch {
-      // A malformed blob must not sink the whole catalog; the other rows still count.
-    }
-  }
-  return ids;
-}
-
 /** The free ids the synced catalog implies, or `null` when nothing has been synced. */
 function deriveFreeIdsFromCatalog(): Set<string> | null {
   try {
-    const available = readAvailableOpencodeModelIds();
+    const available = readSyncedOpencodeFamilyModelIds();
     if (available.size === 0) return null;
     const free = new Set<string>();
     const pricing = getModelsDevPricing();
